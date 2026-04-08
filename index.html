@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
   />
-  <title>Dino Game Mobile</title>
+  <title>Dino Game</title>
   <style>
     * {
       box-sizing: border-box;
@@ -99,6 +99,86 @@
       color: #333;
     }
 
+    #leaderboard {
+      width: 100%;
+      background: #fff;
+      border: 2px solid #000;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    #leaderboard h3 {
+      margin: 0 0 12px 0;
+      font-size: 20px;
+    }
+
+    .save-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    #playerName {
+      flex: 1 1 180px;
+      min-width: 160px;
+      padding: 10px;
+      border: 2px solid #000;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    #saveScoreBtn {
+      padding: 10px 14px;
+      border: 2px solid #000;
+      border-radius: 6px;
+      background: #ddd;
+      font-family: monospace;
+      font-size: 14px;
+      cursor: not-allowed;
+    }
+
+    #saveScoreBtn.enabled {
+      background: #fff;
+      cursor: pointer;
+    }
+
+    #saveHint {
+      font-size: 13px;
+      color: #333;
+      margin-bottom: 10px;
+      min-height: 18px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    #leaderboard table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    #leaderboard th,
+    #leaderboard td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    #leaderboard th:nth-child(1),
+    #leaderboard td:nth-child(1) {
+      width: 50px;
+    }
+
+    #leaderboard th:nth-child(3),
+    #leaderboard td:nth-child(3) {
+      width: 90px;
+    }
+
     @media (min-width: 700px) {
       #controls {
         grid-template-columns: 1fr 1fr;
@@ -116,7 +196,7 @@
       <div class="control">
         <div class="control-header">
           <label for="dinoSize">Размер динозавра</label>
-          <span class="control-value" id="dinoSizeValue">1</span>
+          <span class="control-value" id="dinoSizeValue">1.0</span>
         </div>
         <input id="dinoSize" type="range" min="0.5" max="2" step="0.1" value="1" />
       </div>
@@ -124,7 +204,7 @@
       <div class="control">
         <div class="control-header">
           <label for="obstacleSize">Размер препятствий</label>
-          <span class="control-value" id="obstacleSizeValue">1</span>
+          <span class="control-value" id="obstacleSizeValue">1.0</span>
         </div>
         <input id="obstacleSize" type="range" min="0.5" max="2" step="0.1" value="1" />
       </div>
@@ -155,9 +235,47 @@
     </div>
 
     <div class="hint">Тап по игре: старт, прыжок, рестарт</div>
+
+    <div id="leaderboard">
+      <h3>Лучшие результаты</h3>
+
+      <div class="save-row">
+        <input
+          id="playerName"
+          type="text"
+          maxlength="20"
+          placeholder="Ваше имя"
+          autocomplete="nickname"
+        />
+        <button id="saveScoreBtn" disabled>Сохранить результат</button>
+      </div>
+
+      <div id="saveHint">Сохранение станет доступно после окончания игры</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Имя</th>
+              <th>Очки</th>
+              <th>Дата</th>
+            </tr>
+          </thead>
+          <tbody id="scoreTableBody">
+            <tr>
+              <td colspan="4">Загрузка...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
+    const SHEET_API_URL =
+      "https://script.google.com/macros/s/AKfycbyui5yPDEYGwovVEUuQ82IjgIDqumjlOLC1-g9ofuffUQd53FGLE5sicY_cQcgnWkfX/exec";
+
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
@@ -190,7 +308,13 @@
     const jumpValue = document.getElementById("jumpValue");
     const spawnValue = document.getElementById("spawnValue");
 
+    const playerNameInput = document.getElementById("playerName");
+    const saveScoreBtn = document.getElementById("saveScoreBtn");
+    const saveHint = document.getElementById("saveHint");
+    const scoreTableBody = document.getElementById("scoreTableBody");
+
     const sliders = document.querySelectorAll("#controls input");
+    let scoreSavedForCurrentRun = false;
 
     function updateSliderLabels() {
       dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
@@ -201,16 +325,44 @@
     }
 
     function setControlsEnabled(enabled) {
-      sliders.forEach((s) => (s.disabled = !enabled));
+      sliders.forEach((s) => {
+        s.disabled = !enabled;
+      });
+    }
+
+    function updateSaveButtonState() {
+      const canSave =
+        gameState === STATE_OVER &&
+        !scoreSavedForCurrentRun &&
+        playerNameInput.value.trim().length > 0;
+
+      saveScoreBtn.disabled = !canSave;
+      saveScoreBtn.classList.toggle("enabled", canSave);
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDate(dateString) {
+      const d = new Date(dateString);
+      if (Number.isNaN(d.getTime())) return "-";
+      return d.toLocaleString("ru-RU");
     }
 
     setControlsEnabled(false);
     updateSliderLabels();
+    updateSaveButtonState();
 
     dinoSize.addEventListener("input", (e) => {
       settings.dinoScale = +e.target.value;
       updateSliderLabels();
-      if (gameState !== STATE_PLAY) {
+      if (gameState !== STATE_PLAY && dino.h) {
         dino.y = GROUND_Y - getDinoHeight();
       }
     });
@@ -236,6 +388,12 @@
       updateSliderLabels();
     });
 
+    playerNameInput.addEventListener("input", () => {
+      updateSaveButtonState();
+    });
+
+    saveScoreBtn.addEventListener("click", saveScore);
+
     // === IMAGES ===
     const images = {};
     const imageNames = ["dino", "cactus", "pterodactile", "ground"];
@@ -247,6 +405,9 @@
       images[name].onload = () => {
         loadedImages++;
         if (loadedImages === imageNames.length) initGame();
+      };
+      images[name].onerror = () => {
+        console.error("Не удалось загрузить картинку:", name);
       };
     });
 
@@ -295,6 +456,97 @@
       { passive: false }
     );
 
+    // === LEADERBOARD ===
+    async function loadLeaderboard() {
+      scoreTableBody.innerHTML = `
+        <tr>
+          <td colspan="4">Загрузка...</td>
+        </tr>
+      `;
+
+      try {
+        const response = await fetch(SHEET_API_URL, {
+          method: "GET"
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+          throw new Error(result.error || "Ошибка загрузки");
+        }
+
+        if (!result.scores || result.scores.length === 0) {
+          scoreTableBody.innerHTML = `
+            <tr>
+              <td colspan="4">Пока нет результатов</td>
+            </tr>
+          `;
+          return;
+        }
+
+        scoreTableBody.innerHTML = result.scores
+          .map((item, index) => {
+            return `
+              <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(item.name)}</td>
+                <td>${item.score}</td>
+                <td>${formatDate(item.date)}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      } catch (error) {
+        console.error(error);
+        scoreTableBody.innerHTML = `
+          <tr>
+            <td colspan="4">Не удалось загрузить таблицу</td>
+          </tr>
+        `;
+      }
+    }
+
+    async function saveScore() {
+      if (gameState !== STATE_OVER || scoreSavedForCurrentRun) return;
+
+      const name = playerNameInput.value.trim();
+      if (!name) return;
+
+      saveScoreBtn.disabled = true;
+      saveScoreBtn.classList.remove("enabled");
+      saveScoreBtn.textContent = "Сохранение...";
+
+      try {
+        const response = await fetch(SHEET_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8"
+          },
+          body: JSON.stringify({
+            name,
+            score
+          })
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+          throw new Error(result.error || "Ошибка сохранения");
+        }
+
+        scoreSavedForCurrentRun = true;
+        saveHint.textContent = "Результат сохранён";
+        saveScoreBtn.textContent = "Сохранено";
+
+        await loadLeaderboard();
+      } catch (error) {
+        console.error(error);
+        saveHint.textContent = "Ошибка сохранения результата";
+        saveScoreBtn.textContent = "Сохранить результат";
+        updateSaveButtonState();
+      }
+    }
+
     // === GAME LOGIC ===
     function jumpDino() {
       if (!dino.jumping) {
@@ -305,8 +557,12 @@
 
     function startGame() {
       reset();
+      scoreSavedForCurrentRun = false;
+      saveHint.textContent = "Игра идёт. Сохранение будет доступно после окончания";
+      saveScoreBtn.textContent = "Сохранить результат";
       gameState = STATE_PLAY;
       setControlsEnabled(false);
+      updateSaveButtonState();
     }
 
     function reset() {
@@ -317,6 +573,8 @@
       dino.y = GROUND_Y - getDinoHeight();
       dino.vy = 0;
       dino.jumping = false;
+
+      updateSaveButtonState();
     }
 
     function spawnObstacle() {
@@ -345,7 +603,7 @@
     }
 
     // === INIT ===
-    function initGame() {
+    async function initGame() {
       dino = {
         x: 50,
         y: GROUND_Y,
@@ -356,6 +614,8 @@
       };
 
       dino.y = GROUND_Y - getDinoHeight();
+      updateSaveButtonState();
+      await loadLeaderboard();
       loop();
     }
 
@@ -385,7 +645,10 @@
         groundX = 0;
       }
 
-      obstacles.forEach((o) => (o.x -= settings.speed));
+      obstacles.forEach((o) => {
+        o.x -= settings.speed;
+      });
+
       obstacles = obstacles.filter((o) => o.x + o.w > -50);
 
       obstacles.forEach((o) => {
@@ -402,6 +665,8 @@
         ) {
           gameState = STATE_OVER;
           setControlsEnabled(true);
+          saveHint.textContent = "Игра окончена. Введите имя и сохраните результат";
+          updateSaveButtonState();
         }
       });
 
@@ -435,36 +700,44 @@
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      ctx.drawImage(images.ground, groundX, GROUND_Y);
-      ctx.drawImage(images.ground, groundX + images.ground.width, GROUND_Y);
+      if (images.ground.complete && images.ground.naturalWidth) {
+        ctx.drawImage(images.ground, groundX, GROUND_Y);
+        ctx.drawImage(images.ground, groundX + images.ground.width, GROUND_Y);
+      }
 
-      ctx.drawImage(
-        images.dino,
-        dinoFrame * dino.w,
-        0,
-        dino.w,
-        dino.h,
-        dino.x,
-        dino.y,
-        getDinoWidth(),
-        getDinoHeight()
-      );
+      if (images.dino.complete && images.dino.naturalWidth) {
+        ctx.drawImage(
+          images.dino,
+          dinoFrame * dino.w,
+          0,
+          dino.w,
+          dino.h,
+          dino.x,
+          dino.y,
+          getDinoWidth(),
+          getDinoHeight()
+        );
+      }
 
       obstacles.forEach((o) => {
         if (o.type === "ptero") {
-          ctx.drawImage(
-            images.pterodactile,
-            pteroFrame * 80,
-            0,
-            80,
-            42,
-            o.x,
-            o.y,
-            o.w,
-            o.h
-          );
+          if (images.pterodactile.complete && images.pterodactile.naturalWidth) {
+            ctx.drawImage(
+              images.pterodactile,
+              pteroFrame * 80,
+              0,
+              80,
+              42,
+              o.x,
+              o.y,
+              o.w,
+              o.h
+            );
+          }
         } else {
-          ctx.drawImage(images.cactus, o.x, o.y, o.w, o.h);
+          if (images.cactus.complete && images.cactus.naturalWidth) {
+            ctx.drawImage(images.cactus, o.x, o.y, o.w, o.h);
+          }
         }
       });
 
@@ -474,14 +747,9 @@
       ctx.fillText("Очки: " + score, 10, 30);
 
       ctx.font = "24px monospace";
-      ctx.textAlign = "center";
 
       if (gameState === STATE_WAIT) {
-        drawCenteredText(
-          ["НАЖМИТЕ НА ИГРУ", "ЧТОБЫ НАЧАТЬ"],
-          110,
-          34
-        );
+        drawCenteredText(["НАЖМИТЕ НА ИГРУ", "ЧТОБЫ НАЧАТЬ"], 110, 34);
       }
 
       if (gameState === STATE_OVER) {
