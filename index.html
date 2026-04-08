@@ -212,9 +212,9 @@
       <div class="control">
         <div class="control-header">
           <label for="speed">Скорость игры</label>
-          <span class="control-value" id="speedValue">5</span>
+          <span class="control-value" id="speedValue">8</span>
         </div>
-        <input id="speed" type="range" min="2" max="12" step="1" value="5" />
+        <input id="speed" type="range" min="2" max="20" step="1" value="8" />
       </div>
 
       <div class="control">
@@ -227,10 +227,10 @@
 
       <div class="control">
         <div class="control-header">
-          <label for="spawn">Шанс спавна</label>
-          <span class="control-value" id="spawnValue">0.015</span>
+          <label for="spawn">Плотность препятствий</label>
+          <span class="control-value" id="spawnValue">1.0</span>
         </div>
-        <input id="spawn" type="range" min="0.005" max="0.05" step="0.005" value="0.015" />
+        <input id="spawn" type="range" min="0.1" max="2" step="0.05" value="1" />
       </div>
     </div>
 
@@ -284,12 +284,17 @@
     const STATE_OVER = "over";
     let gameState = STATE_WAIT;
 
+    const BASE_FRAME_TIME = 1000 / 60;
+    const GAME_TIME_SCALE = 1.5;
+    const GROUND_Y = 400;
+    const PTERO_Y = [GROUND_Y - 60, GROUND_Y - 120];
+
     const settings = {
       dinoScale: 1,
       obstacleScale: 1,
-      speed: 5,
+      speed: 8,
       jumpHeight: 20,
-      spawnChance: 0.015,
+      spawnDensity: 1,
       gravity: 20 / 35
     };
 
@@ -309,38 +314,32 @@
     const saveScoreBtn = document.getElementById("saveScoreBtn");
     const saveHint = document.getElementById("saveHint");
     const scoreTableBody = document.getElementById("scoreTableBody");
-
     const sliders = document.querySelectorAll("#controls input");
 
     const images = {};
     const imageNames = ["dino", "cactus", "pterodactile", "ground"];
 
-    const GROUND_Y = 400;
-    const PTERO_Y = [GROUND_Y - 60, GROUND_Y - 120];
-    const BASE_FRAME_TIME = 1000 / 60;
-    const GAME_TIME_SCALE = 2;
-
     let loadedImages = 0;
+    let lastTime = 0;
     let scoreSavedForCurrentRun = false;
 
     let dino = {};
     let obstacles = [];
     let groundX = 0;
-    let score = 0;
+    let scoreValue = 0;
+    let nextSpawnDistance = 0;
 
     let dinoFrame = 0;
     let dinoFrameTimer = 0;
     let pteroFrame = 0;
     let pteroFrameTimer = 0;
 
-    let lastTime = 0;
-
     function updateSliderLabels() {
       dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
       obstacleSizeValue.textContent = settings.obstacleScale.toFixed(1);
       speedValue.textContent = settings.speed;
       jumpValue.textContent = settings.jumpHeight;
-      spawnValue.textContent = settings.spawnChance.toFixed(3);
+      spawnValue.textContent = settings.spawnDensity.toFixed(2);
     }
 
     function setControlsEnabled(enabled) {
@@ -389,6 +388,15 @@
       });
     }
 
+    function resetNextSpawnDistance() {
+      const density = settings.spawnDensity;
+
+      const minGap = 200 / density;
+      const maxGap = 300 / density;
+
+      nextSpawnDistance = minGap + Math.random() * (maxGap - minGap);
+    }
+
     async function loadLeaderboard() {
       scoreTableBody.innerHTML = `
         <tr>
@@ -419,16 +427,14 @@
         }
 
         scoreTableBody.innerHTML = result.scores
-          .map((item, index) => {
-            return `
-              <tr>
-                <td>${index + 1}</td>
-                <td>${escapeHtml(item.name)}</td>
-                <td>${item.score}</td>
-                <td>${formatDate(item.date)}</td>
-              </tr>
-            `;
-          })
+          .map((item, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${escapeHtml(item.name)}</td>
+              <td>${item.score}</td>
+              <td>${formatDate(item.date)}</td>
+            </tr>
+          `)
           .join("");
       } catch (error) {
         console.error("Ошибка загрузки таблицы:", error);
@@ -458,7 +464,7 @@
           },
           body: JSON.stringify({
             name,
-            score
+            score: scoreValue
           })
         });
 
@@ -501,8 +507,8 @@
 
     function reset() {
       obstacles = [];
-      score = 0;
       groundX = 0;
+      scoreValue = 0;
       dinoFrame = 0;
       dinoFrameTimer = 0;
       pteroFrame = 0;
@@ -512,6 +518,7 @@
       dino.vy = 0;
       dino.jumping = false;
 
+      resetNextSpawnDistance();
       updateSaveButtonState();
     }
 
@@ -560,20 +567,22 @@
         dino.jumping = false;
       }
 
-      groundX -= settings.speed * delta;
+      const worldMove = settings.speed * delta;
+
+      groundX -= worldMove;
       if (groundX <= -images.ground.width) {
         groundX += images.ground.width;
       }
 
       obstacles.forEach((o) => {
-        o.x -= settings.speed * delta;
+        o.x -= worldMove;
       });
 
       obstacles = obstacles.filter((o) => o.x + o.w > -50);
 
       obstacles.forEach((o) => {
         if (!o.passed && o.x + o.w < dino.x) {
-          score++;
+          scoreValue++;
           o.passed = true;
         }
 
@@ -590,11 +599,15 @@
         }
       });
 
-      if (Math.random() < settings.spawnChance * delta) {
+      nextSpawnDistance -= worldMove;
+
+      if (nextSpawnDistance <= 0) {
         const lastObstacle = obstacles[obstacles.length - 1];
-        const enoughDistance = !lastObstacle || lastObstacle.x < canvas.width - 250;
+        const enoughDistance = !lastObstacle || lastObstacle.x < canvas.width - 80;
+
         if (enoughDistance) {
           spawnObstacle();
+          resetNextSpawnDistance();
         }
       }
 
@@ -609,7 +622,6 @@
         pteroFrame = (pteroFrame + 1) % 2;
         pteroFrameTimer = 0;
       }
-      settings.speed += 0.002 * delta;
     }
 
     function draw() {
@@ -659,7 +671,7 @@
       ctx.fillStyle = "#000";
       ctx.font = "20px monospace";
       ctx.textAlign = "left";
-      ctx.fillText("Очки: " + score, 10, 30);
+      ctx.fillText("Очки: " + scoreValue, 10, 30);
 
       ctx.font = "24px monospace";
 
@@ -685,7 +697,8 @@
         lastTime = time;
       }
 
-      const deltaMs = Math.min(time - lastTime, 33.333);
+      const rawDeltaMs = time - lastTime;
+      const deltaMs = Math.min(rawDeltaMs, 33.333);
       const delta = (deltaMs / BASE_FRAME_TIME) * GAME_TIME_SCALE;
 
       lastTime = time;
@@ -715,6 +728,7 @@
     dinoSize.addEventListener("input", (e) => {
       settings.dinoScale = +e.target.value;
       updateSliderLabels();
+
       if (gameState !== STATE_PLAY && dino.h) {
         dino.y = GROUND_Y - getDinoHeight();
       }
@@ -730,15 +744,16 @@
       updateSliderLabels();
     });
 
-    spawn.addEventListener("input", (e) => {
-      settings.spawnChance = +e.target.value;
-      updateSliderLabels();
-    });
-
     jump.addEventListener("input", (e) => {
       settings.jumpHeight = +e.target.value;
       settings.gravity = settings.jumpHeight / 35;
       updateSliderLabels();
+    });
+
+    spawn.addEventListener("input", (e) => {
+      settings.spawnDensity = +e.target.value;
+      updateSliderLabels();
+      resetNextSpawnDistance();
     });
 
     playerNameInput.addEventListener("input", updateSaveButtonState);
@@ -771,12 +786,14 @@
     imageNames.forEach((name) => {
       images[name] = new Image();
       images[name].src = "images/" + name + ".png";
+
       images[name].onload = () => {
         loadedImages++;
         if (loadedImages === imageNames.length) {
           initGame();
         }
       };
+
       images[name].onerror = () => {
         console.error("Не удалось загрузить картинку:", name);
       };
