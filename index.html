@@ -279,13 +279,11 @@
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
-    // === GAME STATES ===
     const STATE_WAIT = "wait";
     const STATE_PLAY = "play";
     const STATE_OVER = "over";
     let gameState = STATE_WAIT;
 
-    // === SETTINGS ===
     const settings = {
       dinoScale: 1,
       obstacleScale: 1,
@@ -295,7 +293,6 @@
       gravity: 20 / 35
     };
 
-    // === UI ===
     const dinoSize = document.getElementById("dinoSize");
     const obstacleSize = document.getElementById("obstacleSize");
     const speed = document.getElementById("speed");
@@ -314,7 +311,29 @@
     const scoreTableBody = document.getElementById("scoreTableBody");
 
     const sliders = document.querySelectorAll("#controls input");
+
+    const images = {};
+    const imageNames = ["dino", "cactus", "pterodactile", "ground"];
+
+    const GROUND_Y = 400;
+    const PTERO_Y = [GROUND_Y - 60, GROUND_Y - 120];
+    const BASE_FRAME_TIME = 1000 / 60;
+    const GAME_TIME_SCALE = 2;
+
+    let loadedImages = 0;
     let scoreSavedForCurrentRun = false;
+
+    let dino = {};
+    let obstacles = [];
+    let groundX = 0;
+    let score = 0;
+
+    let dinoFrame = 0;
+    let dinoFrameTimer = 0;
+    let pteroFrame = 0;
+    let pteroFrameTimer = 0;
+
+    let lastTime = 0;
 
     function updateSliderLabels() {
       dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
@@ -355,108 +374,21 @@
       return d.toLocaleString("ru-RU");
     }
 
-    setControlsEnabled(false);
-    updateSliderLabels();
-    updateSaveButtonState();
-
-    dinoSize.addEventListener("input", (e) => {
-      settings.dinoScale = +e.target.value;
-      updateSliderLabels();
-      if (gameState !== STATE_PLAY && dino.h) {
-        dino.y = GROUND_Y - getDinoHeight();
-      }
-    });
-
-    obstacleSize.addEventListener("input", (e) => {
-      settings.obstacleScale = +e.target.value;
-      updateSliderLabels();
-    });
-
-    speed.addEventListener("input", (e) => {
-      settings.speed = +e.target.value;
-      updateSliderLabels();
-    });
-
-    spawn.addEventListener("input", (e) => {
-      settings.spawnChance = +e.target.value;
-      updateSliderLabels();
-    });
-
-    jump.addEventListener("input", (e) => {
-      settings.jumpHeight = +e.target.value;
-      settings.gravity = settings.jumpHeight / 35;
-      updateSliderLabels();
-    });
-
-    playerNameInput.addEventListener("input", () => {
-      updateSaveButtonState();
-    });
-
-    saveScoreBtn.addEventListener("click", saveScore);
-
-    // === IMAGES ===
-    const images = {};
-    const imageNames = ["dino", "cactus", "pterodactile", "ground"];
-    let loadedImages = 0;
-
-    imageNames.forEach((name) => {
-      images[name] = new Image();
-      images[name].src = "images/" + name + ".png";
-      images[name].onload = () => {
-        loadedImages++;
-        if (loadedImages === imageNames.length) initGame();
-      };
-      images[name].onerror = () => {
-        console.error("Не удалось загрузить картинку:", name);
-      };
-    });
-
-    // === CONSTS ===
-    const GROUND_Y = 400;
-
-    // === OBJECTS ===
-    let dino = {};
-    let obstacles = [];
-    let groundX = 0;
-    let score = 0;
-
-    // === ANIMATION ===
-    let dinoFrame = 0;
-    let dinoFrameTick = 0;
-    let pteroFrame = 0;
-    let pteroFrameTick = 0;
-    const PTERO_Y = [GROUND_Y - 60, GROUND_Y - 120];
-
-    // === INPUT ===
-    function handleGameAction() {
-      if (gameState === STATE_WAIT || gameState === STATE_OVER) {
-        startGame();
-      } else if (gameState === STATE_PLAY) {
-        jumpDino();
-      }
+    function getDinoWidth() {
+      return (dino.w * settings.dinoScale) / 2;
     }
 
-    document.addEventListener("keydown", (e) => {
-      if (e.code === "Space" || e.code === "ArrowUp") {
-        e.preventDefault();
-        handleGameAction();
-      }
-    });
+    function getDinoHeight() {
+      return (dino.h * settings.dinoScale) / 2;
+    }
 
-    canvas.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      handleGameAction();
-    });
+    function drawCenteredText(lines, startY, lineHeight = 30) {
+      ctx.textAlign = "center";
+      lines.forEach((line, index) => {
+        ctx.fillText(line, canvas.width / 2, startY + index * lineHeight);
+      });
+    }
 
-    canvas.addEventListener(
-      "touchstart",
-      (e) => {
-        e.preventDefault();
-      },
-      { passive: false }
-    );
-
-    // === LEADERBOARD ===
     async function loadLeaderboard() {
       scoreTableBody.innerHTML = `
         <tr>
@@ -466,10 +398,12 @@
 
       try {
         const response = await fetch(SHEET_API_URL, {
-          method: "GET"
+          method: "GET",
+          cache: "no-store"
         });
 
-        const result = await response.json();
+        const text = await response.text();
+        const result = JSON.parse(text);
 
         if (!result.ok) {
           throw new Error(result.error || "Ошибка загрузки");
@@ -497,7 +431,7 @@
           })
           .join("");
       } catch (error) {
-        console.error(error);
+        console.error("Ошибка загрузки таблицы:", error);
         scoreTableBody.innerHTML = `
           <tr>
             <td colspan="4">Не удалось загрузить таблицу</td>
@@ -528,7 +462,8 @@
           })
         });
 
-        const result = await response.json();
+        const text = await response.text();
+        const result = JSON.parse(text);
 
         if (!result.ok) {
           throw new Error(result.error || "Ошибка сохранения");
@@ -540,14 +475,13 @@
 
         await loadLeaderboard();
       } catch (error) {
-        console.error(error);
+        console.error("Ошибка сохранения:", error);
         saveHint.textContent = "Ошибка сохранения результата";
         saveScoreBtn.textContent = "Сохранить результат";
         updateSaveButtonState();
       }
     }
 
-    // === GAME LOGIC ===
     function jumpDino() {
       if (!dino.jumping) {
         dino.vy = -settings.jumpHeight;
@@ -569,6 +503,10 @@
       obstacles = [];
       score = 0;
       groundX = 0;
+      dinoFrame = 0;
+      dinoFrameTimer = 0;
+      pteroFrame = 0;
+      pteroFrameTimer = 0;
 
       dino.y = GROUND_Y - getDinoHeight();
       dino.vy = 0;
@@ -602,37 +540,19 @@
       );
     }
 
-    // === INIT ===
-    async function initGame() {
-      dino = {
-        x: 50,
-        y: GROUND_Y,
-        w: images.dino.width / 2,
-        h: images.dino.height,
-        vy: 0,
-        jumping: false
-      };
-
-      dino.y = GROUND_Y - getDinoHeight();
-      updateSaveButtonState();
-      await loadLeaderboard();
-      loop();
+    function handleGameAction() {
+      if (gameState === STATE_WAIT || gameState === STATE_OVER) {
+        startGame();
+      } else if (gameState === STATE_PLAY) {
+        jumpDino();
+      }
     }
 
-    function getDinoWidth() {
-      return (dino.w * settings.dinoScale) / 2;
-    }
-
-    function getDinoHeight() {
-      return (dino.h * settings.dinoScale) / 2;
-    }
-
-    // === UPDATE ===
-    function update() {
+    function update(delta, deltaMs) {
       if (gameState !== STATE_PLAY) return;
 
-      dino.vy += settings.gravity;
-      dino.y += dino.vy;
+      dino.vy += settings.gravity * delta;
+      dino.y += dino.vy * delta;
 
       if (dino.y >= GROUND_Y - getDinoHeight()) {
         dino.y = GROUND_Y - getDinoHeight();
@@ -640,13 +560,13 @@
         dino.jumping = false;
       }
 
-      groundX -= settings.speed;
+      groundX -= settings.speed * delta;
       if (groundX <= -images.ground.width) {
-        groundX = 0;
+        groundX += images.ground.width;
       }
 
       obstacles.forEach((o) => {
-        o.x -= settings.speed;
+        o.x -= settings.speed * delta;
       });
 
       obstacles = obstacles.filter((o) => o.x + o.w > -50);
@@ -670,7 +590,7 @@
         }
       });
 
-      if (Math.random() < settings.spawnChance) {
+      if (Math.random() < settings.spawnChance * delta) {
         const lastObstacle = obstacles[obstacles.length - 1];
         const enoughDistance = !lastObstacle || lastObstacle.x < canvas.width - 250;
         if (enoughDistance) {
@@ -678,23 +598,18 @@
         }
       }
 
-      if (++dinoFrameTick > 12) {
+      dinoFrameTimer += deltaMs;
+      if (dinoFrameTimer >= 12 * BASE_FRAME_TIME) {
         dinoFrame = (dinoFrame + 1) % 2;
-        dinoFrameTick = 0;
+        dinoFrameTimer = 0;
       }
 
-      if (++pteroFrameTick > 20) {
+      pteroFrameTimer += deltaMs;
+      if (pteroFrameTimer >= 20 * BASE_FRAME_TIME) {
         pteroFrame = (pteroFrame + 1) % 2;
-        pteroFrameTick = 0;
+        pteroFrameTimer = 0;
       }
-    }
-
-    // === DRAW ===
-    function drawCenteredText(lines, startY, lineHeight = 30) {
-      ctx.textAlign = "center";
-      lines.forEach((line, index) => {
-        ctx.fillText(line, canvas.width / 2, startY + index * lineHeight);
-      });
+      settings.speed += 0.002 * delta;
     }
 
     function draw() {
@@ -765,12 +680,107 @@
       }
     }
 
-    // === LOOP ===
-    function loop() {
-      update();
+    function loop(time = 0) {
+      if (!lastTime) {
+        lastTime = time;
+      }
+
+      const deltaMs = Math.min(time - lastTime, 33.333);
+      const delta = (deltaMs / BASE_FRAME_TIME) * GAME_TIME_SCALE;
+
+      lastTime = time;
+
+      update(delta || GAME_TIME_SCALE, deltaMs || BASE_FRAME_TIME);
       draw();
       requestAnimationFrame(loop);
     }
+
+    async function initGame() {
+      dino = {
+        x: 50,
+        y: GROUND_Y,
+        w: images.dino.width / 2,
+        h: images.dino.height,
+        vy: 0,
+        jumping: false
+      };
+
+      dino.y = GROUND_Y - getDinoHeight();
+      updateSliderLabels();
+      updateSaveButtonState();
+      await loadLeaderboard();
+      requestAnimationFrame(loop);
+    }
+
+    dinoSize.addEventListener("input", (e) => {
+      settings.dinoScale = +e.target.value;
+      updateSliderLabels();
+      if (gameState !== STATE_PLAY && dino.h) {
+        dino.y = GROUND_Y - getDinoHeight();
+      }
+    });
+
+    obstacleSize.addEventListener("input", (e) => {
+      settings.obstacleScale = +e.target.value;
+      updateSliderLabels();
+    });
+
+    speed.addEventListener("input", (e) => {
+      settings.speed = +e.target.value;
+      updateSliderLabels();
+    });
+
+    spawn.addEventListener("input", (e) => {
+      settings.spawnChance = +e.target.value;
+      updateSliderLabels();
+    });
+
+    jump.addEventListener("input", (e) => {
+      settings.jumpHeight = +e.target.value;
+      settings.gravity = settings.jumpHeight / 35;
+      updateSliderLabels();
+    });
+
+    playerNameInput.addEventListener("input", updateSaveButtonState);
+    saveScoreBtn.addEventListener("click", saveScore);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" || e.code === "ArrowUp") {
+        e.preventDefault();
+        handleGameAction();
+      }
+    });
+
+    canvas.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      handleGameAction();
+    });
+
+    canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+      },
+      { passive: false }
+    );
+
+    setControlsEnabled(false);
+    updateSliderLabels();
+    updateSaveButtonState();
+
+    imageNames.forEach((name) => {
+      images[name] = new Image();
+      images[name].src = "images/" + name + ".png";
+      images[name].onload = () => {
+        loadedImages++;
+        if (loadedImages === imageNames.length) {
+          initGame();
+        }
+      };
+      images[name].onerror = () => {
+        console.error("Не удалось загрузить картинку:", name);
+      };
+    });
   </script>
 </body>
 </html>
