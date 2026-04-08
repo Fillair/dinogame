@@ -1,295 +1,508 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<title>Dino Game</title>
-<style>
-  body {
-    margin: 0;
-    background: #eee;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    font-family: monospace;
-  }
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  />
+  <title>Dino Game Mobile</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-  canvas {
-    background: #fff;
-    border: 2px solid #000;
-  }
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #eee;
+      font-family: monospace;
+      min-height: 100%;
+    }
 
-  #controls {
-    margin-left: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 260px;
-  }
+    body {
+      display: flex;
+      justify-content: center;
+      padding: 12px;
+    }
 
-  #controls label {
-    font-size: 14px;
-  }
+    .app {
+      width: 100%;
+      max-width: 1000px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+    }
 
-  #controls input {
-    cursor: pointer;
-  }
+    .game-wrap {
+      width: 100%;
+      background: #fff;
+      border: 2px solid #000;
+      overflow: hidden;
+      border-radius: 8px;
+    }
 
-  #controls input:disabled {
-    filter: grayscale(1);
-    opacity: 0.4;
-  }
-</style>
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #controls {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      background: #fff;
+      border: 2px solid #000;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .control {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 14px;
+    }
+
+    .control-value {
+      white-space: nowrap;
+    }
+
+    #controls input[type="range"] {
+      width: 100%;
+      cursor: pointer;
+    }
+
+    #controls input:disabled {
+      filter: grayscale(1);
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      width: 100%;
+      text-align: center;
+      font-size: 13px;
+      color: #333;
+    }
+
+    @media (min-width: 700px) {
+      #controls {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
+  <div class="app">
+    <div class="game-wrap">
+      <canvas id="game" width="1000" height="500"></canvas>
+    </div>
 
-<canvas id="game" width="1000" height="500"></canvas>
+    <div id="controls">
+      <div class="control">
+        <div class="control-header">
+          <label for="dinoSize">Размер динозавра</label>
+          <span class="control-value" id="dinoSizeValue">1</span>
+        </div>
+        <input id="dinoSize" type="range" min="0.5" max="2" step="0.1" value="1" />
+      </div>
 
-<div id="controls">
-  <label for="dinoSize">Размер динозавра</label>
-  <input id="dinoSize" type="range" min="0.5" max="2" step="0.1" value="1">
+      <div class="control">
+        <div class="control-header">
+          <label for="obstacleSize">Размер препятствий</label>
+          <span class="control-value" id="obstacleSizeValue">1</span>
+        </div>
+        <input id="obstacleSize" type="range" min="0.5" max="2" step="0.1" value="1" />
+      </div>
 
-  <label for="obstacleSize">Размер препятствий</label>
-  <input id="obstacleSize" type="range" min="0.5" max="2" step="0.1" value="1">
+      <div class="control">
+        <div class="control-header">
+          <label for="speed">Скорость игры</label>
+          <span class="control-value" id="speedValue">5</span>
+        </div>
+        <input id="speed" type="range" min="2" max="12" step="1" value="5" />
+      </div>
 
-  <label for="speed">Скорость игры</label>
-  <input id="speed" type="range" min="2" max="12" step="1" value="5">
+      <div class="control">
+        <div class="control-header">
+          <label for="jump">Высота прыжка</label>
+          <span class="control-value" id="jumpValue">20</span>
+        </div>
+        <input id="jump" type="range" min="10" max="30" step="1" value="20" />
+      </div>
 
-  <label for="jump">Высота прыжка</label>
-  <input id="jump" type="range" min="10" max="30" step="1" value="20">
+      <div class="control">
+        <div class="control-header">
+          <label for="spawn">Шанс спавна</label>
+          <span class="control-value" id="spawnValue">0.015</span>
+        </div>
+        <input id="spawn" type="range" min="0.005" max="0.05" step="0.005" value="0.015" />
+      </div>
+    </div>
 
-  <label for="spawn">Шанс спавна</label>
-  <input id="spawn" type="range" min="0.005" max="0.05" step="0.005" value="0.015">
-</div>
+    <div class="hint">Тап по игре: старт, прыжок, рестарт</div>
+  </div>
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-// === GAME STATES ===
-const STATE_WAIT = "wait";
-const STATE_PLAY = "play";
-const STATE_OVER = "over";
-let gameState = STATE_WAIT;
+    // === GAME STATES ===
+    const STATE_WAIT = "wait";
+    const STATE_PLAY = "play";
+    const STATE_OVER = "over";
+    let gameState = STATE_WAIT;
 
-// === SETTINGS ===
-const settings = {
-  dinoScale: 1,
-  obstacleScale: 1,
-  speed: 5,
-  jumpHeight: 20,      // ИНТУИТИВНО: больше = выше прыжок
-  spawnChance: 0.015,
-  gravity: 0.6
-};
+    // === SETTINGS ===
+    const settings = {
+      dinoScale: 1,
+      obstacleScale: 1,
+      speed: 5,
+      jumpHeight: 20,
+      spawnChance: 0.015,
+      gravity: 20 / 35
+    };
 
-// === IMAGES ===
-const images = {};
-const imageNames = ["dino","cactus","pterodactile","ground"];
-let loadedImages = 0;
+    // === UI ===
+    const dinoSize = document.getElementById("dinoSize");
+    const obstacleSize = document.getElementById("obstacleSize");
+    const speed = document.getElementById("speed");
+    const jump = document.getElementById("jump");
+    const spawn = document.getElementById("spawn");
 
-imageNames.forEach(name => {
-  images[name] = new Image();
-  images[name].src = "images/" + name + ".png";
-  images[name].onload = () => {
-    loadedImages++;
-    if (loadedImages === imageNames.length) initGame();
-  };
-});
+    const dinoSizeValue = document.getElementById("dinoSizeValue");
+    const obstacleSizeValue = document.getElementById("obstacleSizeValue");
+    const speedValue = document.getElementById("speedValue");
+    const jumpValue = document.getElementById("jumpValue");
+    const spawnValue = document.getElementById("spawnValue");
 
-// === CONSTS ===
-const GROUND_Y = 400;
+    const sliders = document.querySelectorAll("#controls input");
 
-// === OBJECTS ===
-let dino = {};
-let obstacles = [];
-let groundX = 0;
-let score = 0;
-
-// === ANIMATION ===
-let dinoFrame = 0;
-let dinoFrameTick = 0;
-let pteroFrame = 0;
-let pteroFrameTick = 0;
-const PTERO_Y = [GROUND_Y - 60, GROUND_Y - 120];
-
-// === CONTROLS ===
-const sliders = document.querySelectorAll("#controls input");
-
-function setControlsEnabled(enabled) {
-  sliders.forEach(s => s.disabled = !enabled);
-}
-setControlsEnabled(false);
-
-// === SLIDERS ===
-dinoSize.oninput = e => settings.dinoScale = +e.target.value;
-obstacleSize.oninput = e => settings.obstacleScale = +e.target.value;
-speed.oninput = e => settings.speed = +e.target.value;
-spawn.oninput = e => settings.spawnChance = +e.target.value;
-
-jump.oninput = e => {
-  settings.jumpHeight = +e.target.value;
-  settings.gravity = settings.jumpHeight / 35;
-};
-
-// === INPUT ===
-document.addEventListener("keydown", e => {
-  if (e.code !== "Space") return;
-
-  if (gameState === STATE_WAIT || gameState === STATE_OVER) {
-    startGame();
-  } else if (gameState === STATE_PLAY) {
-    jumpDino();
-  }
-});
-
-// === GAME LOGIC ===
-function jumpDino() {
-  if (!dino.jumping) {
-    dino.vy = -settings.jumpHeight;
-    dino.jumping = true;
-  }
-}
-
-function startGame() {
-  reset();
-  gameState = STATE_PLAY;
-  setControlsEnabled(false);
-}
-
-function reset() {
-  obstacles = [];
-  score = 0;
-  groundX = 0;
-
-  dino.y = GROUND_Y - getDinoHeight();
-  dino.vy = 0;
-  dino.jumping = false;
-}
-
-function spawnObstacle() {
-  const scale = settings.obstacleScale;
-  const isPtero = Math.random() < 0.3;
-
-  obstacles.push(
-    isPtero
-      ? { type:"ptero", x:canvas.width+50, y:PTERO_Y[Math.random()*2|0], w:80*scale, h:42*scale, passed:false }
-      : { type:"cactus", x:canvas.width+50, y:GROUND_Y-50*scale, w:33*scale, h:50*scale, passed:false }
-  );
-}
-
-// === INIT ===
-function initGame() {
-  dino = {
-    x: 50,
-    y: GROUND_Y,
-    w: images.dino.width / 2,
-    h: images.dino.height,
-    vy: 0,
-    jumping: false
-  };
-
-  dino.y = GROUND_Y - getDinoHeight();
-  loop();
-}
-
-function getDinoWidth() {
-  return dino.w * settings.dinoScale / 2;
-}
-function getDinoHeight() {
-  return dino.h * settings.dinoScale / 2;
-}
-
-// === UPDATE ===
-function update() {
-  if (gameState !== STATE_PLAY) return;
-
-  dino.vy += settings.gravity;
-  dino.y += dino.vy;
-
-  if (dino.y >= GROUND_Y - getDinoHeight()) {
-    dino.y = GROUND_Y - getDinoHeight();
-    dino.vy = 0;
-    dino.jumping = false;
-  }
-
-  groundX -= settings.speed;
-  if (groundX <= -images.ground.width) groundX = 0;
-
-  obstacles.forEach(o => o.x -= settings.speed);
-
-  obstacles.forEach(o => {
-    if (!o.passed && o.x + o.w < dino.x) {
-      score++;
-      o.passed = true;
+    function updateSliderLabels() {
+      dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
+      obstacleSizeValue.textContent = settings.obstacleScale.toFixed(1);
+      speedValue.textContent = settings.speed;
+      jumpValue.textContent = settings.jumpHeight;
+      spawnValue.textContent = settings.spawnChance.toFixed(3);
     }
-    if (
-      dino.x < o.x + o.w &&
-      dino.x + getDinoWidth() > o.x &&
-      dino.y < o.y + o.h &&
-      dino.y + getDinoHeight() > o.y
-    ) {
-      gameState = STATE_OVER;
-      setControlsEnabled(true);
+
+    function setControlsEnabled(enabled) {
+      sliders.forEach((s) => (s.disabled = !enabled));
     }
-  });
 
-  if (Math.random() < settings.spawnChance) spawnObstacle();
+    setControlsEnabled(false);
+    updateSliderLabels();
 
-  if (++dinoFrameTick > 12) {
-    dinoFrame = (dinoFrame + 1) % 2;
-    dinoFrameTick = 0;
-  }
-  if (++pteroFrameTick > 20) {
-    pteroFrame = (pteroFrame + 1) % 2;
-    pteroFrameTick = 0;
-  }
-}
+    dinoSize.addEventListener("input", (e) => {
+      settings.dinoScale = +e.target.value;
+      updateSliderLabels();
+      if (gameState !== STATE_PLAY) {
+        dino.y = GROUND_Y - getDinoHeight();
+      }
+    });
 
-// === DRAW ===
-function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+    obstacleSize.addEventListener("input", (e) => {
+      settings.obstacleScale = +e.target.value;
+      updateSliderLabels();
+    });
 
-  ctx.drawImage(images.ground, groundX, GROUND_Y);
-  ctx.drawImage(images.ground, groundX + images.ground.width, GROUND_Y);
+    speed.addEventListener("input", (e) => {
+      settings.speed = +e.target.value;
+      updateSliderLabels();
+    });
 
-  ctx.drawImage(
-    images.dino,
-    dinoFrame * dino.w, 0, dino.w, dino.h,
-    dino.x, dino.y, getDinoWidth(), getDinoHeight()
-  );
+    spawn.addEventListener("input", (e) => {
+      settings.spawnChance = +e.target.value;
+      updateSliderLabels();
+    });
 
-  obstacles.forEach(o => {
-    if (o.type === "ptero") {
-      ctx.drawImage(images.pterodactile, pteroFrame*80,0,80,42, o.x,o.y,o.w,o.h);
-    } else {
-      ctx.drawImage(images.cactus, o.x,o.y,o.w,o.h);
+    jump.addEventListener("input", (e) => {
+      settings.jumpHeight = +e.target.value;
+      settings.gravity = settings.jumpHeight / 35;
+      updateSliderLabels();
+    });
+
+    // === IMAGES ===
+    const images = {};
+    const imageNames = ["dino", "cactus", "pterodactile", "ground"];
+    let loadedImages = 0;
+
+    imageNames.forEach((name) => {
+      images[name] = new Image();
+      images[name].src = "images/" + name + ".png";
+      images[name].onload = () => {
+        loadedImages++;
+        if (loadedImages === imageNames.length) initGame();
+      };
+    });
+
+    // === CONSTS ===
+    const GROUND_Y = 400;
+
+    // === OBJECTS ===
+    let dino = {};
+    let obstacles = [];
+    let groundX = 0;
+    let score = 0;
+
+    // === ANIMATION ===
+    let dinoFrame = 0;
+    let dinoFrameTick = 0;
+    let pteroFrame = 0;
+    let pteroFrameTick = 0;
+    const PTERO_Y = [GROUND_Y - 60, GROUND_Y - 120];
+
+    // === INPUT ===
+    function handleGameAction() {
+      if (gameState === STATE_WAIT || gameState === STATE_OVER) {
+        startGame();
+      } else if (gameState === STATE_PLAY) {
+        jumpDino();
+      }
     }
-  });
 
-  ctx.fillStyle = "#000";
-  ctx.font = "20px monospace";
-  ctx.textAlign = "left";
-  ctx.fillText("Очки: " + score, 10, 30);
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" || e.code === "ArrowUp") {
+        e.preventDefault();
+        handleGameAction();
+      }
+    });
 
-  ctx.textAlign = "center";
+    canvas.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      handleGameAction();
+    });
 
-  if (gameState === STATE_WAIT) {
-    ctx.fillText("НАЖМИТЕ ПРОБЕЛ, ЧТОБЫ НАЧАТЬ", canvas.width/2, 100);
-  }
+    canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+      },
+      { passive: false }
+    );
 
-  if (gameState === STATE_OVER) {
-    ctx.fillText("ИГРА ОКОНЧЕНА", canvas.width/2, 80);
-    ctx.fillText("МОЖЕТЕ ПОМЕНЯТЬ НАСТРОЙКИ", canvas.width/2, 110);
-    ctx.fillText("НАЖМИТЕ ПРОБЕЛ, ЧТОБЫ НАЧАТЬ ЗАНОВО", canvas.width/2, 140);
-  }
-}
+    // === GAME LOGIC ===
+    function jumpDino() {
+      if (!dino.jumping) {
+        dino.vy = -settings.jumpHeight;
+        dino.jumping = true;
+      }
+    }
 
-// === LOOP ===
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-</script>
+    function startGame() {
+      reset();
+      gameState = STATE_PLAY;
+      setControlsEnabled(false);
+    }
+
+    function reset() {
+      obstacles = [];
+      score = 0;
+      groundX = 0;
+
+      dino.y = GROUND_Y - getDinoHeight();
+      dino.vy = 0;
+      dino.jumping = false;
+    }
+
+    function spawnObstacle() {
+      const scale = settings.obstacleScale;
+      const isPtero = Math.random() < 0.3;
+
+      obstacles.push(
+        isPtero
+          ? {
+              type: "ptero",
+              x: canvas.width + 50,
+              y: PTERO_Y[(Math.random() * 2) | 0],
+              w: 80 * scale,
+              h: 42 * scale,
+              passed: false
+            }
+          : {
+              type: "cactus",
+              x: canvas.width + 50,
+              y: GROUND_Y - 50 * scale,
+              w: 33 * scale,
+              h: 50 * scale,
+              passed: false
+            }
+      );
+    }
+
+    // === INIT ===
+    function initGame() {
+      dino = {
+        x: 50,
+        y: GROUND_Y,
+        w: images.dino.width / 2,
+        h: images.dino.height,
+        vy: 0,
+        jumping: false
+      };
+
+      dino.y = GROUND_Y - getDinoHeight();
+      loop();
+    }
+
+    function getDinoWidth() {
+      return (dino.w * settings.dinoScale) / 2;
+    }
+
+    function getDinoHeight() {
+      return (dino.h * settings.dinoScale) / 2;
+    }
+
+    // === UPDATE ===
+    function update() {
+      if (gameState !== STATE_PLAY) return;
+
+      dino.vy += settings.gravity;
+      dino.y += dino.vy;
+
+      if (dino.y >= GROUND_Y - getDinoHeight()) {
+        dino.y = GROUND_Y - getDinoHeight();
+        dino.vy = 0;
+        dino.jumping = false;
+      }
+
+      groundX -= settings.speed;
+      if (groundX <= -images.ground.width) {
+        groundX = 0;
+      }
+
+      obstacles.forEach((o) => (o.x -= settings.speed));
+      obstacles = obstacles.filter((o) => o.x + o.w > -50);
+
+      obstacles.forEach((o) => {
+        if (!o.passed && o.x + o.w < dino.x) {
+          score++;
+          o.passed = true;
+        }
+
+        if (
+          dino.x < o.x + o.w &&
+          dino.x + getDinoWidth() > o.x &&
+          dino.y < o.y + o.h &&
+          dino.y + getDinoHeight() > o.y
+        ) {
+          gameState = STATE_OVER;
+          setControlsEnabled(true);
+        }
+      });
+
+      if (Math.random() < settings.spawnChance) {
+        const lastObstacle = obstacles[obstacles.length - 1];
+        const enoughDistance = !lastObstacle || lastObstacle.x < canvas.width - 250;
+        if (enoughDistance) {
+          spawnObstacle();
+        }
+      }
+
+      if (++dinoFrameTick > 12) {
+        dinoFrame = (dinoFrame + 1) % 2;
+        dinoFrameTick = 0;
+      }
+
+      if (++pteroFrameTick > 20) {
+        pteroFrame = (pteroFrame + 1) % 2;
+        pteroFrameTick = 0;
+      }
+    }
+
+    // === DRAW ===
+    function drawCenteredText(lines, startY, lineHeight = 30) {
+      ctx.textAlign = "center";
+      lines.forEach((line, index) => {
+        ctx.fillText(line, canvas.width / 2, startY + index * lineHeight);
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(images.ground, groundX, GROUND_Y);
+      ctx.drawImage(images.ground, groundX + images.ground.width, GROUND_Y);
+
+      ctx.drawImage(
+        images.dino,
+        dinoFrame * dino.w,
+        0,
+        dino.w,
+        dino.h,
+        dino.x,
+        dino.y,
+        getDinoWidth(),
+        getDinoHeight()
+      );
+
+      obstacles.forEach((o) => {
+        if (o.type === "ptero") {
+          ctx.drawImage(
+            images.pterodactile,
+            pteroFrame * 80,
+            0,
+            80,
+            42,
+            o.x,
+            o.y,
+            o.w,
+            o.h
+          );
+        } else {
+          ctx.drawImage(images.cactus, o.x, o.y, o.w, o.h);
+        }
+      });
+
+      ctx.fillStyle = "#000";
+      ctx.font = "20px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("Очки: " + score, 10, 30);
+
+      ctx.font = "24px monospace";
+      ctx.textAlign = "center";
+
+      if (gameState === STATE_WAIT) {
+        drawCenteredText(
+          ["НАЖМИТЕ НА ИГРУ", "ЧТОБЫ НАЧАТЬ"],
+          110,
+          34
+        );
+      }
+
+      if (gameState === STATE_OVER) {
+        drawCenteredText(
+          [
+            "ИГРА ОКОНЧЕНА",
+            "МОЖНО ИЗМЕНИТЬ НАСТРОЙКИ СНИЗУ",
+            "НАЖМИТЕ НА ИГРУ, ЧТОБЫ НАЧАТЬ ЗАНОВО"
+          ],
+          90,
+          34
+        );
+      }
+    }
+
+    // === LOOP ===
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+  </script>
 </body>
 </html>
