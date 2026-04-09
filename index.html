@@ -156,6 +156,21 @@
       overflow-x: auto;
     }
 
+    .first-place {
+      color: gold;
+      font-weight: bold;
+    }
+
+    .second-place {
+      color: silver;
+      font-weight: bold;
+    }
+
+    .third-place {
+      color: #cd7f32;
+      font-weight: bold;
+    }
+
     #leaderboard table {
       width: 100%;
       border-collapse: collapse;
@@ -212,9 +227,9 @@
       <div class="control">
         <div class="control-header">
           <label for="speed">Скорость игры</label>
-          <span class="control-value" id="speedValue">8</span>
+          <span class="control-value" id="speedValue">12</span>
         </div>
-        <input id="speed" type="range" min="2" max="20" step="1" value="8" />
+        <input id="speed" type="range" min="2" max="20" step="1" value="12" />
       </div>
 
       <div class="control">
@@ -228,7 +243,7 @@
       <div class="control">
         <div class="control-header">
           <label for="spawn">Плотность препятствий</label>
-          <span class="control-value" id="spawnValue">1.0</span>
+          <span class="control-value" id="spawnValue">1.00</span>
         </div>
         <input id="spawn" type="range" min="0.1" max="2" step="0.05" value="1" />
       </div>
@@ -294,7 +309,7 @@
       obstacleScale: 1,
       speed: 8,
       jumpHeight: 20,
-      spawnDensity: 1,
+      spawnDensity: 0.5,
       gravity: 20 / 35
     };
 
@@ -334,6 +349,19 @@
     let pteroFrame = 0;
     let pteroFrameTimer = 0;
 
+    let activeSessionId = null;
+    let activeSessionStartedAtIso = null;
+    let localGameStartPerf = 0;
+    let hasStartedSession = false;
+
+    settings.spawnDensity = parseFloat(spawn.value);
+    settings.speed = parseFloat(speed.value);
+    settings.dinoScale = parseFloat(dinoSize.value);
+    settings.obstacleScale = parseFloat(obstacleSize.value);
+    settings.jumpHeight = parseFloat(jump.value);
+    settings.gravity = settings.jumpHeight / 35;
+    updateSliderLabels();
+
     function updateSliderLabels() {
       dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
       obstacleSizeValue.textContent = settings.obstacleScale.toFixed(1);
@@ -352,7 +380,9 @@
       const canSave =
         gameState === STATE_OVER &&
         !scoreSavedForCurrentRun &&
-        playerNameInput.value.trim().length > 0;
+        playerNameInput.value.trim().length > 0 &&
+        !!activeSessionId &&
+        hasStartedSession;
 
       saveScoreBtn.disabled = !canSave;
       saveScoreBtn.classList.toggle("enabled", canSave);
@@ -390,11 +420,29 @@
 
     function resetNextSpawnDistance() {
       const density = settings.spawnDensity;
-
-      const minGap = 200 / density;
-      const maxGap = 300 / density;
-
+      const minGap = 350 / density;
+      const maxGap = 650 / density;
       nextSpawnDistance = minGap + Math.random() * (maxGap - minGap);
+    }
+
+    async function createGameSession() {
+      const response = await fetch(`${SHEET_API_URL}?action=start`, {
+        method: "GET",
+        cache: "no-store"
+      });
+
+      const text = await response.text();
+      const result = JSON.parse(text);
+
+      if (!result.ok || !result.sessionId) {
+        throw new Error(result.error || "Не удалось создать игровую сессию");
+      }
+
+      activeSessionId = result.sessionId;
+      activeSessionStartedAtIso = result.startedAt || null;
+      hasStartedSession = true;
+      localGameStartPerf = performance.now();
+      updateSaveButtonState();
     }
 
     async function loadLeaderboard() {
@@ -427,15 +475,22 @@
         }
 
         scoreTableBody.innerHTML = result.scores
-          .map((item, index) => `
-            <tr>
+        .map((item, index) => {
+          let className = '';
+          if (index === 0) className = 'first-place';
+          else if (index === 1) className = 'second-place';
+          else if (index === 2) className = 'third-place';
+
+          return `
+            <tr class="${className}">
               <td>${index + 1}</td>
               <td>${escapeHtml(item.name)}</td>
               <td>${item.score}</td>
               <td>${formatDate(item.date)}</td>
             </tr>
-          `)
-          .join("");
+          `;
+        })
+        .join("");
       } catch (error) {
         console.error("Ошибка загрузки таблицы:", error);
         scoreTableBody.innerHTML = `
@@ -448,9 +503,15 @@
 
     async function saveScore() {
       if (gameState !== STATE_OVER || scoreSavedForCurrentRun) return;
+      if (!activeSessionId || !hasStartedSession) return;
 
       const name = playerNameInput.value.trim();
       if (!name) return;
+
+      const durationMs = Math.max(
+        0,
+        Math.round(performance.now() - localGameStartPerf)
+      );
 
       saveScoreBtn.disabled = true;
       saveScoreBtn.classList.remove("enabled");
@@ -463,8 +524,10 @@
             "Content-Type": "text/plain;charset=utf-8"
           },
           body: JSON.stringify({
+            sessionId: activeSessionId,
             name,
-            score: scoreValue
+            score: scoreValue,
+            durationMs
           })
         });
 
@@ -482,7 +545,7 @@
         await loadLeaderboard();
       } catch (error) {
         console.error("Ошибка сохранения:", error);
-        saveHint.textContent = "Ошибка сохранения результата";
+        saveHint.textContent = "Ошибка сохранения: " + error.message;
         saveScoreBtn.textContent = "Сохранить результат";
         updateSaveButtonState();
       }
@@ -495,7 +558,17 @@
       }
     }
 
-    function startGame() {
+    async function startGame() {
+      if (gameState === STATE_PLAY) return;
+
+      saveHint.textContent = "Подготовка игры...";
+      try {
+        await createGameSession();
+      } catch (error) {
+        saveHint.textContent = "Не удалось начать игру: " + error.message;
+        return;
+      }
+
       reset();
       scoreSavedForCurrentRun = false;
       saveHint.textContent = "Игра идёт. Сохранение будет доступно после окончания";
