@@ -2,18 +2,12 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Dino Game</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       background: #eee;
@@ -156,21 +150,6 @@
       overflow-x: auto;
     }
 
-    .first-place {
-      color: gold;
-      font-weight: bold;
-    }
-
-    .second-place {
-      color: silver;
-      font-weight: bold;
-    }
-
-    .third-place {
-      color: #cd7f32;
-      font-weight: bold;
-    }
-
     #leaderboard table {
       width: 100%;
       border-collapse: collapse;
@@ -182,16 +161,6 @@
       text-align: left;
       padding: 8px;
       border-bottom: 1px solid #ddd;
-    }
-
-    #leaderboard th:nth-child(1),
-    #leaderboard td:nth-child(1) {
-      width: 50px;
-    }
-
-    #leaderboard th:nth-child(3),
-    #leaderboard td:nth-child(3) {
-      width: 90px;
     }
 
     @media (min-width: 700px) {
@@ -227,9 +196,9 @@
       <div class="control">
         <div class="control-header">
           <label for="speed">Скорость игры</label>
-          <span class="control-value" id="speedValue">12</span>
+          <span class="control-value" id="speedValue">8</span>
         </div>
-        <input id="speed" type="range" min="2" max="20" step="1" value="12" />
+        <input id="speed" type="range" min="2" max="20" step="1" value="8" />
       </div>
 
       <div class="control">
@@ -243,9 +212,9 @@
       <div class="control">
         <div class="control-header">
           <label for="spawn">Плотность препятствий</label>
-          <span class="control-value" id="spawnValue">1.00</span>
+          <span class="control-value" id="spawnValue">0.50</span>
         </div>
-        <input id="spawn" type="range" min="0.1" max="2" step="0.05" value="1" />
+        <input id="spawn" type="range" min="0.1" max="2" step="0.05" value="0.5" />
       </div>
     </div>
 
@@ -255,13 +224,7 @@
       <h3>Лучшие результаты</h3>
 
       <div class="save-row">
-        <input
-          id="playerName"
-          type="text"
-          maxlength="20"
-          placeholder="Ваше имя"
-          autocomplete="nickname"
-        />
+        <input id="playerName" type="text" maxlength="20" placeholder="Ваше имя" autocomplete="nickname" />
         <button id="saveScoreBtn" disabled>Сохранить результат</button>
       </div>
 
@@ -349,18 +312,14 @@
     let pteroFrame = 0;
     let pteroFrameTimer = 0;
 
-    let activeSessionId = null;
-    let activeSessionStartedAtIso = null;
-    let localGameStartPerf = 0;
-    let hasStartedSession = false;
-
-    settings.spawnDensity = parseFloat(spawn.value);
-    settings.speed = parseFloat(speed.value);
-    settings.dinoScale = parseFloat(dinoSize.value);
-    settings.obstacleScale = parseFloat(obstacleSize.value);
-    settings.jumpHeight = parseFloat(jump.value);
-    settings.gravity = settings.jumpHeight / 35;
-    updateSliderLabels();
+    function syncSettingsFromInputs() {
+      settings.dinoScale = parseFloat(dinoSize.value);
+      settings.obstacleScale = parseFloat(obstacleSize.value);
+      settings.speed = parseFloat(speed.value);
+      settings.jumpHeight = parseFloat(jump.value);
+      settings.spawnDensity = parseFloat(spawn.value);
+      settings.gravity = settings.jumpHeight / 35;
+    }
 
     function updateSliderLabels() {
       dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
@@ -380,9 +339,7 @@
       const canSave =
         gameState === STATE_OVER &&
         !scoreSavedForCurrentRun &&
-        playerNameInput.value.trim().length > 0 &&
-        !!activeSessionId &&
-        hasStartedSession;
+        playerNameInput.value.trim().length > 0;
 
       saveScoreBtn.disabled = !canSave;
       saveScoreBtn.classList.toggle("enabled", canSave);
@@ -425,26 +382,6 @@
       nextSpawnDistance = minGap + Math.random() * (maxGap - minGap);
     }
 
-    async function createGameSession() {
-      const response = await fetch(`${SHEET_API_URL}?action=start`, {
-        method: "GET",
-        cache: "no-store"
-      });
-
-      const text = await response.text();
-      const result = JSON.parse(text);
-
-      if (!result.ok || !result.sessionId) {
-        throw new Error(result.error || "Не удалось создать игровую сессию");
-      }
-
-      activeSessionId = result.sessionId;
-      activeSessionStartedAtIso = result.startedAt || null;
-      hasStartedSession = true;
-      localGameStartPerf = performance.now();
-      updateSaveButtonState();
-    }
-
     async function loadLeaderboard() {
       scoreTableBody.innerHTML = `
         <tr>
@@ -475,22 +412,15 @@
         }
 
         scoreTableBody.innerHTML = result.scores
-        .map((item, index) => {
-          let className = '';
-          if (index === 0) className = 'first-place';
-          else if (index === 1) className = 'second-place';
-          else if (index === 2) className = 'third-place';
-
-          return `
-            <tr class="${className}">
+          .map((item, index) => `
+            <tr>
               <td>${index + 1}</td>
               <td>${escapeHtml(item.name)}</td>
               <td>${item.score}</td>
               <td>${formatDate(item.date)}</td>
             </tr>
-          `;
-        })
-        .join("");
+          `)
+          .join("");
       } catch (error) {
         console.error("Ошибка загрузки таблицы:", error);
         scoreTableBody.innerHTML = `
@@ -503,15 +433,9 @@
 
     async function saveScore() {
       if (gameState !== STATE_OVER || scoreSavedForCurrentRun) return;
-      if (!activeSessionId || !hasStartedSession) return;
 
       const name = playerNameInput.value.trim();
       if (!name) return;
-
-      const durationMs = Math.max(
-        0,
-        Math.round(performance.now() - localGameStartPerf)
-      );
 
       saveScoreBtn.disabled = true;
       saveScoreBtn.classList.remove("enabled");
@@ -524,10 +448,8 @@
             "Content-Type": "text/plain;charset=utf-8"
           },
           body: JSON.stringify({
-            sessionId: activeSessionId,
             name,
-            score: scoreValue,
-            durationMs
+            score: scoreValue
           })
         });
 
@@ -545,7 +467,7 @@
         await loadLeaderboard();
       } catch (error) {
         console.error("Ошибка сохранения:", error);
-        saveHint.textContent = "Ошибка сохранения: " + error.message;
+        saveHint.textContent = "Ошибка сохранения результата";
         saveScoreBtn.textContent = "Сохранить результат";
         updateSaveButtonState();
       }
@@ -558,17 +480,7 @@
       }
     }
 
-    async function startGame() {
-      if (gameState === STATE_PLAY) return;
-
-      saveHint.textContent = "Подготовка игры...";
-      try {
-        await createGameSession();
-      } catch (error) {
-        saveHint.textContent = "Не удалось начать игру: " + error.message;
-        return;
-      }
-
+    function startGame() {
       reset();
       scoreSavedForCurrentRun = false;
       saveHint.textContent = "Игра идёт. Сохранение будет доступно после окончания";
@@ -792,6 +704,7 @@
       };
 
       dino.y = GROUND_Y - getDinoHeight();
+      syncSettingsFromInputs();
       updateSliderLabels();
       updateSaveButtonState();
       await loadLeaderboard();
@@ -853,6 +766,7 @@
     );
 
     setControlsEnabled(false);
+    syncSettingsFromInputs();
     updateSliderLabels();
     updateSaveButtonState();
 
