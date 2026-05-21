@@ -2,12 +2,18 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  />
   <title>Dino Game</title>
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
-    html, body {
+    html,
+    body {
       margin: 0;
       padding: 0;
       background: #eee;
@@ -150,6 +156,21 @@
       overflow-x: auto;
     }
 
+    .first-place {
+      color: gold;
+      font-weight: bold;
+    }
+
+    .second-place {
+      color: silver;
+      font-weight: bold;
+    }
+
+    .third-place {
+      color: #cd7f32;
+      font-weight: bold;
+    }
+
     #leaderboard table {
       width: 100%;
       border-collapse: collapse;
@@ -161,6 +182,16 @@
       text-align: left;
       padding: 8px;
       border-bottom: 1px solid #ddd;
+    }
+
+    #leaderboard th:nth-child(1),
+    #leaderboard td:nth-child(1) {
+      width: 50px;
+    }
+
+    #leaderboard th:nth-child(3),
+    #leaderboard td:nth-child(3) {
+      width: 90px;
     }
 
     @media (min-width: 700px) {
@@ -196,9 +227,9 @@
       <div class="control">
         <div class="control-header">
           <label for="speed">Скорость игры</label>
-          <span class="control-value" id="speedValue">8</span>
+          <span class="control-value" id="speedValue">12</span>
         </div>
-        <input id="speed" type="range" min="2" max="20" step="1" value="8" />
+        <input id="speed" type="range" min="2" max="20" step="1" value="12" />
       </div>
 
       <div class="control">
@@ -212,9 +243,9 @@
       <div class="control">
         <div class="control-header">
           <label for="spawn">Плотность препятствий</label>
-          <span class="control-value" id="spawnValue">0.50</span>
+          <span class="control-value" id="spawnValue">1.00</span>
         </div>
-        <input id="spawn" type="range" min="0.1" max="2" step="0.05" value="0.5" />
+        <input id="spawn" type="range" min="0.1" max="2" step="0.05" value="1" />
       </div>
     </div>
 
@@ -224,7 +255,13 @@
       <h3>Лучшие результаты</h3>
 
       <div class="save-row">
-        <input id="playerName" type="text" maxlength="20" placeholder="Ваше имя" autocomplete="nickname" />
+        <input
+          id="playerName"
+          type="text"
+          maxlength="20"
+          placeholder="Ваше имя"
+          autocomplete="nickname"
+        />
         <button id="saveScoreBtn" disabled>Сохранить результат</button>
       </div>
 
@@ -312,14 +349,13 @@
     let pteroFrame = 0;
     let pteroFrameTimer = 0;
 
-    function syncSettingsFromInputs() {
-      settings.dinoScale = parseFloat(dinoSize.value);
-      settings.obstacleScale = parseFloat(obstacleSize.value);
-      settings.speed = parseFloat(speed.value);
-      settings.jumpHeight = parseFloat(jump.value);
-      settings.spawnDensity = parseFloat(spawn.value);
-      settings.gravity = settings.jumpHeight / 35;
-    }
+    settings.spawnDensity = parseFloat(spawn.value);
+    settings.speed = parseFloat(speed.value);
+    settings.dinoScale = parseFloat(dinoSize.value);
+    settings.obstacleScale = parseFloat(obstacleSize.value);
+    settings.jumpHeight = parseFloat(jump.value);
+    settings.gravity = settings.jumpHeight / 35;
+    updateSliderLabels();
 
     function updateSliderLabels() {
       dinoSizeValue.textContent = settings.dinoScale.toFixed(1);
@@ -382,6 +418,20 @@
       nextSpawnDistance = minGap + Math.random() * (maxGap - minGap);
     }
 
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        return await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
     async function loadLeaderboard() {
       scoreTableBody.innerHTML = `
         <tr>
@@ -390,7 +440,7 @@
       `;
 
       try {
-        const response = await fetch(SHEET_API_URL, {
+        const response = await fetchWithTimeout(SHEET_API_URL, {
           method: "GET",
           cache: "no-store"
         });
@@ -412,15 +462,22 @@
         }
 
         scoreTableBody.innerHTML = result.scores
-          .map((item, index) => `
-            <tr>
+        .map((item, index) => {
+          let className = '';
+          if (index === 0) className = 'first-place';
+          else if (index === 1) className = 'second-place';
+          else if (index === 2) className = 'third-place';
+
+          return `
+            <tr class="${className}">
               <td>${index + 1}</td>
               <td>${escapeHtml(item.name)}</td>
               <td>${item.score}</td>
               <td>${formatDate(item.date)}</td>
             </tr>
-          `)
-          .join("");
+          `;
+        })
+        .join("");
       } catch (error) {
         console.error("Ошибка загрузки таблицы:", error);
         scoreTableBody.innerHTML = `
@@ -442,7 +499,7 @@
       saveScoreBtn.textContent = "Сохранение...";
 
       try {
-        const response = await fetch(SHEET_API_URL, {
+        const response = await fetchWithTimeout(SHEET_API_URL, {
           method: "POST",
           headers: {
             "Content-Type": "text/plain;charset=utf-8"
@@ -467,7 +524,7 @@
         await loadLeaderboard();
       } catch (error) {
         console.error("Ошибка сохранения:", error);
-        saveHint.textContent = "Ошибка сохранения результата";
+        saveHint.textContent = "Ошибка сохранения: " + error.message;
         saveScoreBtn.textContent = "Сохранить результат";
         updateSaveButtonState();
       }
@@ -481,6 +538,8 @@
     }
 
     function startGame() {
+      if (gameState === STATE_PLAY) return;
+
       reset();
       scoreSavedForCurrentRun = false;
       saveHint.textContent = "Игра идёт. Сохранение будет доступно после окончания";
@@ -704,11 +763,10 @@
       };
 
       dino.y = GROUND_Y - getDinoHeight();
-      syncSettingsFromInputs();
       updateSliderLabels();
       updateSaveButtonState();
-      await loadLeaderboard();
       requestAnimationFrame(loop);
+      loadLeaderboard();
     }
 
     dinoSize.addEventListener("input", (e) => {
@@ -766,7 +824,6 @@
     );
 
     setControlsEnabled(false);
-    syncSettingsFromInputs();
     updateSliderLabels();
     updateSaveButtonState();
 
